@@ -1,1 +1,168 @@
+#include <iostream>
+#include <vector>
+#include <complex>
+#include <chrono>
+#include <sstream>
+#include <omp.h>
+#include <opencv2/opencv.hpp>
 
+using namespace std;
+using namespace cv;
+
+// ========== Параметры изображения ==========
+const int WIDTH = 800;
+const int HEIGHT = 800;
+const int MAX_ITER = 256;
+const double X_MIN = -2.5;
+const double X_MAX = 1.0;
+const double Y_MIN = -1.5;
+const double Y_MAX = 1.5;
+
+// ========== Вычисление количества итераций для точки ==========
+int mandelbrot_iterations(double cx, double cy) {
+    complex<double> z(0.0, 0.0);
+    complex<double> c(cx, cy);
+    int iter = 0;
+    while (norm(z) <= 4.0 && iter < MAX_ITER) {
+        z = z * z + c;
+        ++iter;
+    }
+    return iter;
+}
+
+// ========== Преобразование количества итераций в цвет ==========
+Vec3b get_color(int iter) {
+    if (iter == MAX_ITER) {
+        return Vec3b(0, 0, 0);
+    }
+
+    int r = (iter * 5) % 256;
+    int g = (iter * 15) % 256;
+    int b = (iter * 25) % 256;
+
+    return Vec3b((uchar)b, (uchar)g, (uchar)r);
+}
+
+// ========== Вычисление множества Мандельброта ==========
+double compute_mandelbrot(int num_threads, Mat* output_img = nullptr) {
+
+    omp_set_num_threads(num_threads);
+    Mat img(HEIGHT, WIDTH, CV_8UC3);
+    double step_x = (X_MAX - X_MIN) / WIDTH;
+    double step_y = (Y_MAX - Y_MIN) / HEIGHT;
+
+    auto start = chrono::high_resolution_clock::now();
+
+#pragma omp parallel for collapse(2) schedule(dynamic)
+    for (int y = 0; y < HEIGHT; ++y) {
+        for (int x = 0; x < WIDTH; ++x) {
+            double cy = Y_MAX - y * step_y;
+            double cx = X_MIN + x * step_x;
+            int iter = mandelbrot_iterations(cx, cy);
+            img.at<Vec3b>(y, x) = get_color(iter);
+        }
+    }
+
+    auto end = chrono::high_resolution_clock::now();
+    chrono::duration<double> elapsed = end - start;
+
+    if (output_img) {
+        *output_img = img.clone();
+    }
+
+    return elapsed.count();
+}
+
+// ========== main ==========
+int main() {
+    setlocale(LC_ALL, "Russian");
+
+    cout << "|------------------------------------------------------|" << endl;
+    cout << "|      OpenMP + OpenCV - МНОЖЕСТВО МАНДЕЛЬБРОТА        |" << endl;
+    cout << "|------------------------------------------------------|" << endl;
+
+    cout << "\nПараметры изображения:" << endl;
+    cout << "  Размер: " << WIDTH << "x" << HEIGHT << " пикселей" << endl;
+    cout << "  Максимум итераций: " << MAX_ITER << endl;
+    cout << "  Область: X [" << X_MIN << ", " << X_MAX << "], Y [" << Y_MIN << ", " << Y_MAX << "]" << endl;
+
+    cout << "\nВведите количество потоков для тестирования (через пробел): ";
+    string line;
+    getline(cin, line);
+    istringstream iss(line);
+    vector<int> threads_list;
+    int n;
+    while (iss >> n) threads_list.push_back(n);
+    if (threads_list.empty()) return 1;
+
+    // Последовательно
+    cout << "\n|---------------- ПОСЛЕДОВАТЕЛЬНАЯ ВЕРСИЯ ----------------|" << endl;
+    double seq_time = compute_mandelbrot(1);
+    cout << "  Время: " << seq_time << " секунд" << endl;
+
+    // Параллельно
+    vector<double> times;
+    Mat final_image;
+
+    for (size_t i = 0; i < threads_list.size(); ++i) {
+        int threads = threads_list[i];
+        cout << "\n|------------ ПАРАЛЛЕЛЬНАЯ ВЕРСИЯ (" << threads << " потоков) ------------|" << endl;
+
+        double t;
+        if (i == threads_list.size() - 1)
+            t = compute_mandelbrot(threads, &final_image);
+        else
+            t = compute_mandelbrot(threads);
+
+        times.push_back(t);
+        cout << "  Время: " << t << " секунд" << endl;
+    }
+
+    // Сравнение
+    cout << "\n|------------------ СРАВНИТЕЛЬНЫЙ АНАЛИЗ -----------------|" << endl;
+    cout << "\n  Потоков | Время (сек) | Ускорение" << endl;
+    cout << "  --------|-------------|-----------" << endl;
+    for (size_t i = 0; i < threads_list.size(); ++i) {
+        double speedup = seq_time / times[i];
+        cout << "     " << threads_list[i] << "    |   " << times[i] << "   |   " << speedup << "x" << endl;
+    }
+
+    // ===== СОХРАНЕНИЕ ИЗОБРАЖЕНИЯ В ФАЙЛ =====
+    if (!final_image.empty()) {
+        cout << "\n|------------------------------------------------------|" << endl;
+        cout << "|                СОХРАНЕНИЕ В ФАЙЛ                     |" << endl;
+        cout << "|------------------------------------------------------|" << endl;
+
+        string filename = "mandelbrot.png";
+
+        // Сохраняем изображение в файл
+        bool saved = imwrite(filename, final_image);
+
+        if (saved) {
+            cout << "\n  ✅ Изображение успешно сохранено!" << endl;
+            cout << "  📁 Имя файла: " << filename << endl;  
+            cout << "  📂 Файл находится в папке с программой (рядом с .exe)" << endl;
+        }
+        else {
+            cout << "\n  ❌ Ошибка при сохранении изображения." << endl;
+        }
+
+        // Пытаемся показать в окне
+        cout << "\n  🪟 Открываю окно с фракталом на 5 секунд..." << endl;
+        cout << "     (Можете сделать скриншот или использовать сохранённый файл)" << endl;
+
+        imshow("Множество Мандельброта - нажмите любую клавишу для закрытия", final_image);
+        waitKey(5000); // Ждём 5 секунд
+        destroyAllWindows();
+    }
+
+    cout << "\n|------------------------------------------------------|" << endl;
+    cout << "|                  РАБОТА ЗАВЕРШЕНА                    |" << endl;
+    cout << "|------------------------------------------------------|" << endl;
+
+    cout << "\nНажмите Enter для выхода...";
+    cin.get();
+    cin.get();
+
+    return 0;
+}

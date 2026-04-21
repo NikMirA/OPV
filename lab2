@@ -8,12 +8,14 @@
 #include <random>
 #include <string>
 
+using namespace std;
+
 // ========== 🍩 ПОНЧИКОВАЯ ==========
 
 // Глобальные переменные
-std::queue<int> donut_display;
-std::mutex display_mutex;
-std::condition_variable cv;
+queue<int> donut_display;
+mutex display_mutex;
+condition_variable cv;
 bool bakery_open = true;
 bool use_mutex = true;  // Флаг: использовать ли мьютекс
 
@@ -22,35 +24,35 @@ thread_local int donuts_eaten = 0;
 
 // ========== 🏭 ПЕКАРНЯ (PRODUCER) ==========
 void bakery(int total_donuts) {
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<> bake_time(100, 300);
+    random_device rd;
+    mt19937 gen(rd());
+    uniform_int_distribution<> bake_time(100, 300);
 
-    std::cout << "\n🏭 ПЕКАРНЯ ОТКРЫЛАСЬ! Будет испечено " << total_donuts << " пончиков.\n" << std::endl;
+    cout << "\n🏭 ПЕКАРНЯ ОТКРЫЛАСЬ! Будет испечено " << total_donuts << " пончиков.\n" << endl;
 
     for (int i = 1; i <= total_donuts; ++i) {
         int time_to_bake = bake_time(gen);
-        std::this_thread::sleep_for(std::chrono::milliseconds(time_to_bake));
+        this_thread::sleep_for(chrono::milliseconds(time_to_bake));
 
         if (use_mutex) {
             // ===== РЕЖИМ С МЬЮТЕКСОМ (БЕЗОПАСНО) =====
-            std::lock_guard<std::mutex> lock(display_mutex);
+            lock_guard<mutex> lock(display_mutex);
             donut_display.push(i);
-            std::cout << "🏭 Пекарня испекла пончик #" << i << std::endl;
-            std::cout << "   📦 На витрине: " << donut_display.size() << " пончиков" << std::endl;
+            cout << "  Пекарня испекла пончик #" << i << endl;
+            cout << "     На витрине: " << donut_display.size() << " пончиков" << endl;
         }
         else {
             // ===== РЕЖИМ БЕЗ МЬЮТЕКСА (ГОНКА!) =====
             donut_display.push(i);
-            std::cout << "🏭 Пекарня испекла пончик #" << i << std::endl;
-            std::cout << "   📦 На витрине: " << donut_display.size() << " пончиков" << std::endl;
+            cout << "  Пекарня испекла пончик #" << i << endl;
+            cout << "     На витрине: " << donut_display.size() << " пончиков" << endl;
         }
 
         cv.notify_one();
     }
 
     if (use_mutex) {
-        std::lock_guard<std::mutex> lock(display_mutex);
+        lock_guard<mutex> lock(display_mutex);
         bakery_open = false;
     }
     else {
@@ -58,21 +60,21 @@ void bakery(int total_donuts) {
     }
     cv.notify_all();
 
-    std::cout << "\n🏭 ПЕКАРНЯ ЗАКРЫЛАСЬ! Все " << total_donuts << " пончиков испечены.\n" << std::endl;
+    cout << "\n  ПЕКАРНЯ ЗАКРЫЛАСЬ! Все " << total_donuts << " пончиков испечены.\n" << endl;
 }
 
 // ========== 👤 ПОКУПАТЕЛЬ (CONSUMER) ==========
 void customer(int id) {
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<> eat_time(200, 800);
+    random_device rd;
+    mt19937 gen(rd());
+    uniform_int_distribution<> eat_time(200, 800);
 
-    std::cout << "👤 Покупатель #" << id << " зашёл в пекарню." << std::endl;
+    cout << "  Покупатель #" << id << " зашёл в пекарню." << endl;
 
     while (true) {
         if (use_mutex) {
             // ===== РЕЖИМ С МЬЮТЕКСОМ (БЕЗОПАСНО) =====
-            std::unique_lock<std::mutex> lock(display_mutex);
+            unique_lock<mutex> lock(display_mutex);
             cv.wait(lock, [] { return !donut_display.empty() || !bakery_open; });
 
             if (!donut_display.empty()) {
@@ -82,13 +84,13 @@ void customer(int id) {
                 lock.unlock();
 
                 int time_to_eat = eat_time(gen);
-                std::cout << "👤 Покупатель #" << id << " взял пончик #" << donut
-                    << " и ест (" << time_to_eat << " мс)..." << std::endl;
-                std::this_thread::sleep_for(std::chrono::milliseconds(time_to_eat));
+                cout << "  Покупатель #" << id << " взял пончик #" << donut
+                    << " и ест (" << time_to_eat << " мс)..." << endl;
+                this_thread::sleep_for(chrono::milliseconds(time_to_eat));
 
                 ++donuts_eaten;
-                std::cout << "✅ Покупатель #" << id << " СЪЕЛ пончик #" << donut
-                    << " (осталось: " << remaining << ")" << std::endl;
+                cout << "  Покупатель #" << id << " СЪЕЛ пончик #" << donut
+                    << " (осталось: " << remaining << ")" << endl;
             }
             else if (!bakery_open) {
                 break;
@@ -101,100 +103,99 @@ void customer(int id) {
                 donut_display.pop();
 
                 int time_to_eat = eat_time(gen);
-                std::cout << "👤 Покупатель #" << id << " взял пончик #" << donut
-                    << " и ест (" << time_to_eat << " мс)..." << std::endl;
-                std::this_thread::sleep_for(std::chrono::milliseconds(time_to_eat));
+                cout << "  Покупатель #" << id << " взял пончик #" << donut
+                    << " и ест (" << time_to_eat << " мс)..." << endl;
+                this_thread::sleep_for(chrono::milliseconds(time_to_eat));
 
                 ++donuts_eaten;
-                std::cout << "⚠️ Покупатель #" << id << " СЪЕЛ пончик #" << donut << std::endl;
+                cout << "  Покупатель #" << id << " СЪЕЛ пончик #" << donut << endl;
             }
             else if (!bakery_open) {
                 break;
             }
             else {
                 // Ждём (busy wait)
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                this_thread::sleep_for(chrono::milliseconds(10));
             }
         }
     }
 
-    std::cout << "\n📊 Покупатель #" << id << " съел всего: " << donuts_eaten << " пончиков" << std::endl;
+    cout << "\n  Покупатель #" << id << " съел всего: " << donuts_eaten << " пончиков" << endl;
 }
 
 // ========== 🔁 ДЕМОНСТРАЦИЯ DEADLOCK С ОБЫЧНЫМ МЬЮТЕКСОМ ==========
 
-std::mutex plain_mtx;  // Обычный мьютекс
+mutex plain_mtx;  // Обычный мьютекс
 
 void log_details_plain() {
-    std::lock_guard<std::mutex> lock(plain_mtx);
-    std::cout << "   📝 [plain] Внутренняя функция логирования" << std::endl;
+    lock_guard<mutex> lock(plain_mtx);
+    cout << "     [plain] Внутренняя функция логирования" << endl;
 }
 
 void log_message_plain() {
-    std::lock_guard<std::mutex> lock(plain_mtx);
-    std::cout << "📝 [plain] Внешняя функция логирования" << std::endl;
+    lock_guard<mutex> lock(plain_mtx);
     log_details_plain();  // 💀 Пытаемся захватить тот же мьютекс → DEADLOCK!
 }
 
 void demonstrate_deadlock() {
-    std::cout << "\n========== 💀 ДЕМОНСТРАЦИЯ DEADLOCK (обычный std::mutex) ==========\n" << std::endl;
-    std::cout << "Сейчас программа ЗАВИСНЕТ, потому что обычный мьютекс нельзя захватывать дважды." << std::endl;
-    std::cout << "Нажмите Enter, чтобы продолжить (и увидеть зависание)...";
-    std::cin.get();
+    cout << "\n==========   ДЕМОНСТРАЦИЯ DEADLOCK (обычный std::mutex) ==========\n" << endl;
+    cout << "Сейчас программа ЗАВИСНЕТ, потому что обычный мьютекс нельзя захватывать дважды." << endl;
+    cout << "Нажмите Enter, чтобы продолжить (и увидеть зависание)...";
+    cin.get();
 
     log_message_plain();  // Здесь программа зависнет
 
-    std::cout << "Эта строка никогда не напечатается." << std::endl;
+    cout << "Эта строка никогда не напечатается." << endl;
 }
 
 // ========== 🔁 ДЕМОНСТРАЦИЯ recursive_mutex ==========
-std::recursive_mutex rec_mtx;
+recursive_mutex rec_mtx;
 
 void eat_donut_half_rec() {
-    std::lock_guard<std::recursive_mutex> lock(rec_mtx);
-    std::cout << "    Откусили половину пончика" << std::endl;
+    lock_guard<recursive_mutex> lock(rec_mtx);
+    cout << "    Откусили половину пончика" << endl;
 }
 
 void eat_whole_donut_rec() {
-    std::lock_guard<std::recursive_mutex> lock(rec_mtx);
-    std::cout << " Начали есть пончик:" << std::endl;
+    lock_guard<recursive_mutex> lock(rec_mtx);
+    cout << " Начали есть пончик:" << endl;
     eat_donut_half_rec();
-    std::cout << "    Доели вторую половину" << std::endl;
+    cout << "    Доели вторую половину" << endl;
 }
 
 void demonstrate_recursive_mutex() {
-    std::cout << "\n========== ✅ ДЕМОНСТРАЦИЯ recursive_mutex ==========\n" << std::endl;
+    cout << "\n==========   ДЕМОНСТРАЦИЯ recursive_mutex ==========\n" << endl;
     eat_whole_donut_rec();
-    std::cout << "\n✅ recursive_mutex отработал без проблем!" << std::endl;
+    cout << "\n  recursive_mutex отработал без проблем!" << endl;
 }
 
 // ========== 🎬 MAIN ==========
 int main() {
     setlocale(LC_ALL, "Russian");
 
-    std::cout << "╔══════════════════════════════════════════════╗" << std::endl;
-    std::cout << "║         🍩 ПОНЧИКОВАЯ (Producer-Consumer)    ║" << std::endl;
-    std::cout << "╚══════════════════════════════════════════════╝\n" << std::endl;
+    cout << "|-----------------------------------------------|" << endl;
+    cout << "|            ПОНЧИКОВАЯ (Producer-Consumer)     |" << endl;
+    cout << "|-----------------------------------------------|\n" << endl;
 
-    std::cout << "Выберите режим работы:\n" << std::endl;
-    std::cout << "  1 — С мьютексом (безопасно, без гонки)" << std::endl;
-    std::cout << "  2 — БЕЗ мьютекса (демонстрация ГОНКИ)" << std::endl;
-    std::cout << "  3 — Демонстрация DEADLOCK с обычным мьютексом" << std::endl;
-    std::cout << "  4 — Демонстрация recursive_mutex (безопасно)" << std::endl;
-    std::cout << "\nВаш выбор: ";
+    cout << "Выберите режим работы:\n" << endl;
+    cout << "  1 — С мьютексом (безопасно, без гонки)" << endl;
+    cout << "  2 — БЕЗ мьютекса (демонстрация ГОНКИ)" << endl;
+    cout << "  3 — Демонстрация DEADLOCK с обычным мьютексом" << endl;
+    cout << "  4 — Демонстрация recursive_mutex (безопасно)" << endl;
+    cout << "\nВаш выбор: ";
 
     int choice;
-    std::cin >> choice;
-    std::cin.ignore();  // Очищаем буфер
+    cin >> choice;
+    cin.ignore();  // Очищаем буфер
 
     if (choice == 1) {
         use_mutex = true;
-        std::cout << "\n=== РЕЖИМ 1: С МЬЮТЕКСОМ (БЕЗОПАСНО) ===\n" << std::endl;
+        cout << "\n=== РЕЖИМ 1: С МЬЮТЕКСОМ (БЕЗОПАСНО) ===\n" << endl;
     }
     else if (choice == 2) {
         use_mutex = false;
-        std::cout << "\n=== РЕЖИМ 2: БЕЗ МЬЮТЕКСА (ГОНКА!) ===\n" << std::endl;
-        std::cout << "⚠️ ВНИМАНИЕ! Возможны странные результаты: пончики могут исчезнуть или съесться дважды!\n" << std::endl;
+        cout << "\n=== РЕЖИМ 2: БЕЗ МЬЮТЕКСА (ГОНКА!) ===\n" << endl;
+        cout << "⚠️ ВНИМАНИЕ! Возможны странные результаты: пончики могут исчезнуть или съесться дважды!\n" << endl;
     }
     else if (choice == 3) {
         demonstrate_deadlock();
@@ -202,24 +203,24 @@ int main() {
     }
     else if (choice == 4) {
         demonstrate_recursive_mutex();
-        std::cout << "\nНажмите Enter для выхода...";
-        std::cin.get();
+        cout << "\nНажмите Enter для выхода...";
+        cin.get();
         return 0;
     }
     else {
-        std::cout << "Неверный выбор. Завершение программы." << std::endl;
+        cout << "Неверный выбор. Завершение программы." << endl;
         return 0;
     }
 
     const int total_donuts = 20;
     const int num_customers = 3;
 
-    std::thread bakery_thread(bakery, total_donuts);
+    thread bakery_thread(bakery, total_donuts);
 
-    std::vector<std::thread> customers;
+    vector<thread> customers;
     for (int i = 1; i <= num_customers; ++i) {
         customers.emplace_back(customer, i);
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        this_thread::sleep_for(chrono::milliseconds(50));
     }
 
     bakery_thread.join();
@@ -227,16 +228,11 @@ int main() {
         c.join();
     }
 
-    std::cout << "\n|------------------------------------------|╗" << std::endl;
-    std::cout <<   "|             ПРОГРАММА ЗАВЕРШЕНА          |" << std::endl;
-    std::cout <<   "|------------------------------------------|\n" << std::endl;
+    cout << "\n|------------------------------------------|╗" << endl;
+    cout << "|             ПРОГРАММА ЗАВЕРШЕНА          |" << endl;
+    cout << "|------------------------------------------|\n" << endl;
 
-    // После основной части показываем recursive_mutex
-    if (choice == 1 || choice == 2) {
-        demonstrate_recursive_mutex();
-    }
-
-    std::cout << "\nНажмите Enter для выхода...";
-    std::cin.get();
+    cout << "\nНажмите Enter для выхода...";
+    cin.get();
     return 0;
 }

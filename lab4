@@ -1,1 +1,187 @@
+#include <iostream>
+#include <vector>
+#include <thread>
+#include <queue>
+#include <mutex>
+#include <condition_variable>
+#include <future>
+#include <functional>
+#include <atomic>
+#include <chrono>
 
+using namespace std;
+
+// ========== ThreadPool ==========
+class ThreadPool {
+public:
+    ThreadPool(size_t num_threads) : stop(false) {
+        for (size_t i = 0; i < num_threads; ++i) {
+            workers.emplace_back([this] {
+                while (true) {
+                    function<void()> task;
+
+                    {
+                        unique_lock<mutex> lock(queue_mutex);
+
+                        condition.wait(lock, [this] {
+                            return stop || !tasks.empty();
+                            });
+
+                        if (stop && tasks.empty()) {
+                            return;
+                        }
+
+                        task = move(tasks.front());
+                        tasks.pop();
+                    }
+
+                    task();
+                }
+                });
+        }
+    }
+
+    ~ThreadPool() {
+        {
+            unique_lock<mutex> lock(queue_mutex);
+            stop = true;
+        }
+        condition.notify_all();
+
+        for (thread& worker : workers) {
+            if (worker.joinable()) {
+                worker.join();
+            }
+        }
+    }
+
+    template<class F, class... Args>
+    auto enqueue(F&& f, Args&&... args) -> future<decltype(f(args...))> {
+        using return_type = decltype(f(args...));
+
+        auto task = make_shared<packaged_task<return_type()>>(
+            bind(forward<F>(f), forward<Args>(args)...)
+        );
+
+        future<return_type> result = task->get_future();
+
+        {
+            unique_lock<mutex> lock(queue_mutex);
+
+            if (stop) {
+                throw runtime_error("enqueue on stopped ThreadPool");
+            }
+
+            tasks.emplace([task]() { (*task)(); });
+        }
+
+        condition.notify_one();
+        return result;
+    }
+
+    ThreadPool(const ThreadPool&) = delete;
+    ThreadPool& operator=(const ThreadPool&) = delete;
+
+private:
+    vector<thread> workers;
+    queue<function<void()>> tasks;
+    mutex queue_mutex;
+    condition_variable condition;
+    bool stop;
+};
+
+// ========== Задачи ==========
+
+long long factorial(int n) {
+    thread::id my_id = this_thread::get_id();
+    cout << "    >> Поток вычисляет factorial(" << n << ")" << endl;
+
+    long long result = 1;
+    for (int i = 2; i <= n; ++i) {
+        result *= i;
+        this_thread::sleep_for(chrono::milliseconds(150));
+    }
+
+    cout << "    << Поток завершил factorial(" << n << ") = " << result << endl;
+    return result;
+}
+
+long long fibonacci(int n) {
+    cout << "    >> Поток вычисляет fibonacci(" << n << ")" << endl;
+
+    if (n <= 1) return n;
+
+    long long a = 0, b = 1;
+    for (int i = 2; i <= n; ++i) {
+        long long next = a + b;  
+        a = b;
+        b = next;
+        this_thread::sleep_for(chrono::milliseconds(180));
+    }
+
+    cout << "    << Поток завершил fibonacci(" << n << ") = " << b << endl;
+    return b;
+}
+
+long long slow_square(int x) {
+    thread::id my_id = this_thread::get_id();
+    cout << "    >> Поток вычисляет square(" << x << ")" << endl;
+
+    this_thread::sleep_for(chrono::milliseconds(230));
+    long long result = (long long)x * x;
+
+    cout << "    << Поток завершил square(" << x << ") = " << result << endl;
+    return result;
+}
+
+// ========== main ==========
+int main() {
+    setlocale(LC_ALL, "Russian");
+
+    cout << "|------------------------------------------------------|" << endl;
+    cout << "|              THREADPOOL - ПУЛ ПОТОКОВ                |" << endl;
+    cout << "|------------------------------------------------------|" << endl;
+
+    cout << "\nСоздание пула из 4 потоков..." << endl;
+    ThreadPool pool(4);
+
+    vector<future<long long>> results;
+
+    cout << "\nДобавление 15 задач в очередь:\n" << endl;
+
+    // Факториалы 3..7
+    for (int i = 3; i <= 7; ++i) {
+        cout << "  [+] factorial(" << i << ")" << endl;
+        results.push_back(pool.enqueue(factorial, i));
+    }
+
+    // Фибоначчи 5..9
+    for (int i = 5; i <= 9; ++i) {
+        cout << "  [+] fibonacci(" << i << ")" << endl;
+        results.push_back(pool.enqueue(fibonacci, i));
+    }
+
+    // Квадраты 1..5
+    for (int i = 1; i <= 5; ++i) {
+        cout << "  [+] square(" << i << ")" << endl;
+        results.push_back(pool.enqueue(slow_square, i));
+    }
+
+    cout << "\n|------------------------------------------------------|" << endl;
+    cout << "  Все задачи добавлены. Ожидание результатов..." << endl;
+    cout << "|------------------------------------------------------|\n" << endl;
+
+    // Получаем результаты
+    int count = 1;
+    for (auto& result : results) {
+        long long value = result.get();
+        cout << "  Результат #" << count << ": " << value << endl;
+        count++;
+    }
+
+    cout << "\n|------------------------------------------------------|" << endl;
+    cout << "|                  РАБОТА ЗАВЕРШЕНА                    |" << endl;
+    cout << "|------------------------------------------------------|" << endl;
+
+    return 0;
+} 

@@ -1,1 +1,134 @@
+#include <iostream>
+#include <thread>
+#include <future>
+#include <atomic>
+#include <vector>
+#include <chrono>
+#include <random>
+#include <iomanip>
 
+using namespace std;
+
+// ========== АТОМАРНЫЙ СЧЁТЧИК ==========
+// atomic — специальный тип, который можно безопасно менять из разных потоков
+// Без atomic была бы ГОНКА (как в Lab 2 без мьютекса!)
+atomic<int> tasks_completed{ 0 };
+
+// ========== ВЫЧИСЛИТЕЛЬНАЯ ЗАДАЧА ==========
+// Вычисляет N-е число Фибоначчи
+unsigned long long fibonacci(int n) {
+    this_thread::sleep_for(chrono::milliseconds(4));
+    cout << "    Вычисляю Фибоначчи(" << n << ")" << endl;
+
+    if (n <= 1) {
+        tasks_completed.fetch_add(1);
+        return n;
+    }
+
+    unsigned long long a = 0, b = 1;
+    for (int i = 2; i <= n; ++i) {
+        unsigned long long next = a + b;
+        a = b;
+        b = next;
+        this_thread::sleep_for(chrono::milliseconds(70));
+    }
+
+    // Атомарно увеличиваем счётчик выполненных задач
+    tasks_completed.fetch_add(1);
+    this_thread::sleep_for(chrono::milliseconds(5));
+    cout << " --->  Фибоначчи(" << n << ") = " << b << endl;
+    
+    return b;
+}
+
+// ========== ФУНКЦИЯ ДЛЯ ЗАПУСКА PACKAGED_TASK В ПОТОКЕ ==========
+// packaged_task — это «коробка» с задачей
+void run_packaged_task(packaged_task<unsigned long long()> task) {
+    task();  // Выполняем задачу из коробки
+}
+
+// ========== ПОТОК-МОНИТОР ==========
+// Его задача — следить за счётчиком и сообщить, когда ВСЁ готово
+void monitor(int total_tasks, promise<string>&& completion_promise) {
+    cout << "\n !  Монитор запущен   !" << endl;
+
+    while (tasks_completed.load() < total_tasks) {
+        int done = tasks_completed.load();
+        cout << " ----- Прогресс: " << done << "/" << total_tasks << " задач выполнено" << endl;
+        this_thread::sleep_for(chrono::milliseconds(300));
+    }
+
+    completion_promise.set_value("  ВСЕ ЗАДАЧИ ПО ФИБОНАЧЧИ ВЫПОЛНЕНЫ!");
+}
+
+// ========== MAIN ==========
+int main() {
+    setlocale(LC_ALL, "Russian");
+
+    cout << "|----------------------------------------------------------|" << endl;
+    cout << "|         АСИНХРОННОЕ ВЫЧИСЛЕНИЕ ЧИСЕЛ ФИБОНАЧЧИ           |" << endl;
+    cout << "|     packaged_task + future + promise + atomic            |" << endl;
+    cout << "|----------------------------------------------------------|\n" << endl;
+
+    const int NUM_TASKS = 15; 
+
+    vector<future<unsigned long long>> futures;
+    vector<thread> workers;
+    promise<string> completion_promise;
+    future<string> completion_future = completion_promise.get_future();
+
+    random_device rd;
+    mt19937 gen(rd());
+    uniform_int_distribution<> dist(10, 30);
+
+    cout << "  # ЗАПУСК " << NUM_TASKS << " ЗАДАЧ:\n" << endl;
+
+    // ЗАПУСК
+    for (int i = 0; i < NUM_TASKS; ++i) {
+        int n = dist(gen);  // Случайное число для Фибоначчи
+
+        // Создаём packaged_task — «коробку» с задачей
+        packaged_task<unsigned long long()> task([n]() { return fibonacci(n); });
+
+        futures.push_back(task.get_future());
+
+        workers.emplace_back(run_packaged_task, move(task));
+
+        cout << "Задача #" << (i + 1) << ": Фибоначчи(" << n << ") запущена" << endl;
+        this_thread::sleep_for(chrono::milliseconds(100));
+    }
+
+    // ========== ЗАПУСКАЕМ МОНИТОР ==========
+    // Передаём promise через move() (его тоже нельзя копировать)
+    thread monitor_thread(monitor, NUM_TASKS, move(completion_promise));
+
+    // ========== ДЕМОНСТРАЦИЯ БЛОКИРУЮЩЕГО get() ==========
+    cout << "\n" << string(60, '-') << endl;
+
+    //  БЛОКИРУЮЩИЙ ВЫЗОВ — программа здесь ЗАМИРАЕТ
+    string message = completion_future.get();
+
+    cout << "      Получен сигнал: " << message << endl;
+    cout << "     Основной поток РАЗБЛОКИРОВАН!" << endl;
+    cout << string(60, '-') << "\n" << endl;
+
+    // ========== СОБИРАЕМ ВСЕ РЕЗУЛЬТАТЫ ==========
+    cout << "   ### РЕЗУЛЬТАТЫ ВСЕХ ВЫЧИСЛЕНИЙ:\n" << endl;
+
+    for (size_t i = 0; i < futures.size(); ++i) {
+        unsigned long long result = futures[i].get();
+        cout << "   Задача #" << (i + 1) << ": " << result << endl;
+    }
+
+    // ========== ЗАВЕРШЕНИЕ ВСЕХ ПОТОКОВ ==========
+    for (auto& t : workers) {
+        if (t.joinable()) t.join();
+    }
+    monitor_thread.join();
+
+    cout << "\n|-------------------------------------|" << endl;
+    cout <<   "|      ПРОГРАММА ЗАВЕРШЕНА!           |" << endl;
+    cout <<   "|-------------------------------------|\n" << endl;
+
+    return 0;
+}

@@ -4,20 +4,22 @@
 #include <mutex>
 #include <string>
 
-std::mutex cout_mutex;
+using namespace std;
+
+mutex cout_mutex;
 
 // Функция для потоков
-void print_task(const std::string& name, int delay_ms, int count) {
+void print_task(const string& name, int delay_ms, int count) {
     for (int i = 1; i <= count; ++i) {
         {
-            std::lock_guard<std::mutex> lock(cout_mutex);
-            std::cout << "[" << name << "] -> " << i << std::endl;
+            lock_guard<mutex> lock(cout_mutex);
+            cout << "[" << name << "] -> " << i << endl;
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
+        this_thread::sleep_for(chrono::milliseconds(delay_ms));
     }
     {
-        std::lock_guard<std::mutex> lock(cout_mutex);
-        std::cout << "[" << name << "] завершён." << std::endl;
+        lock_guard<mutex> lock(cout_mutex);
+        cout << "[" << name << "] завершён." << endl;
     }
 }
 
@@ -25,10 +27,10 @@ void print_task(const std::string& name, int delay_ms, int count) {
 void main_task(int count, int delay_ms) {
     for (int i = 1; i <= count; ++i) {
         {
-            std::lock_guard<std::mutex> lock(cout_mutex);
-            std::cout << "[основной поток]       итерация  " << i << std::endl;
+            lock_guard<mutex> lock(cout_mutex);
+            cout << "[основной поток]       итерация  " << i << endl;
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
+        this_thread::sleep_for(chrono::milliseconds(delay_ms));
     }
 }
 
@@ -36,10 +38,10 @@ int main() {
     setlocale(LC_ALL, "Russian");
 
     // ========== ЧАСТЬ 1: join() ==========
-    std::cout << "\n             #   ЧАСТЬ 1: Демонстрация join() ==========\n" << std::endl;
+    cout << "\n             #   ЧАСТЬ 1: Демонстрация join() ==========\n" << endl;
 
-    std::thread t1(print_task, "Поток A", 250, 5);
-    std::thread t2(print_task, "Поток B", 220, 5);
+    thread t1(print_task, "Поток A", 250, 5);
+    thread t2(print_task, "Поток B", 220, 5);
     //return 0;
     main_task(5, 280);
 
@@ -47,34 +49,34 @@ int main() {
     t1.join();
     t2.join();
 
-    std::cout << "\n>>> Оба потока присоединены. Программа не завершится раньше времени.\n" << std::endl;
+    cout << "\n>>> Оба потока присоединены. Программа не завершится раньше времени.\n" << endl;
 
     // Пауза перед второй частью
-    std::this_thread::sleep_for(std::chrono::seconds(2));
+    this_thread::sleep_for(chrono::seconds(2));
 
 
 
     // ========== ЧАСТЬ 2: detach() ==========
-    std::cout << "\n             #   ЧАСТЬ 2: Демонстрация detach()\n" << std::endl;
+    cout << "\n             #   ЧАСТЬ 2: Демонстрация detach()\n" << endl;
 
-    std::thread t3(print_task, "Join-поток   t3", 200, 5);
-    std::thread t4(print_task, "Detach-поток t4", 350, 5);
+    thread t3(print_task, "Join-поток   t3", 200, 5);
+    thread t4(print_task, "Detach-поток t4", 350, 5);
 
     // Отсоединяем t4
     t4.detach();
-    std::cout << "[Главный] Поток t4 отсоединён (detach).\n" << std::endl;
+    cout << "[Главный] Поток t4 отсоединён (detach).\n" << endl;
 
     main_task(5, 180);
 
     // Ждём только t3
     t3.join();
-    std::cout << "\n[Главный] Join-поток завершён." << std::endl;
-    std::cout << "[Главный] Искусственно ждём 3 секунды, чтобы detached-поток успел закончить работу...\n" << std::endl;
+    cout << "\n[Главный] Join-поток завершён." << endl;
+    cout << "[Главный] Искусственно ждём 3 секунды, чтобы detached-поток успел закончить работу...\n" << endl;
 
     //            Даём detached-потоку время завершиться
-    std::this_thread::sleep_for(std::chrono::seconds(3));
+    this_thread::sleep_for(chrono::seconds(3));
 
-    std::cout << "\n>>> Программа завершается." << std::endl;
+    cout << "\n>>> Программа завершается." << endl;
 
     return 0;
 }

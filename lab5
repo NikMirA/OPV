@@ -1,1 +1,109 @@
+#include <iostream>
+#include <vector>
+#include <chrono>
+#include <omp.h>
 
+using namespace std;
+
+// ========== Последовательное суммирование ==========
+double sum_sequential(const vector<double>& data) {
+    double total = 0.0;
+    for (size_t i = 0; i < data.size(); ++i) {
+        total += data[i];
+    }
+    return total;
+}
+
+// ========== Параллельное суммирование (OpenMP) ==========
+double sum_parallel(const vector<double>& data, int num_threads) {
+    double total = 0.0;
+    omp_set_num_threads(num_threads);
+
+#pragma omp parallel
+    {
+#pragma omp single
+        {
+            cout << "  Используется потоков: " << omp_get_num_threads() << endl;
+        }
+    }
+
+#pragma omp parallel for reduction(+:total)
+    for (int i = 0; i < static_cast<int>(data.size()); ++i) {
+        total += data[i];
+    }
+
+    return total;
+}
+
+// ========== main ==========
+int main() {
+    setlocale(LC_ALL, "Russian");
+
+    cout << "|------------------------------------------------------|" << endl;
+    cout << "|        OpenMP - ПАРАЛЛЕЛЬНОЕ СУММИРОВАНИЕ           |" << endl;
+    cout << "|------------------------------------------------------|\n" << endl;
+
+    const int SIZE = 10000000;      // 10^7 элементов
+    const int NUM_THREADS = 4;      // Количество потоков
+
+    cout << "\nСоздание массива из " << SIZE << " элементов..." << endl;
+
+    vector<double> data(SIZE);
+    for (int i = 0; i < SIZE; ++i) {
+        data[i] = static_cast<double>(i + 1);
+    }
+
+    cout << "Массив создан.\n" << endl;
+
+    // ===== ПОСЛЕДОВАТЕЛЬНАЯ ВЕРСИЯ =====
+    cout << "|------------------------------------------------------|" << endl;
+    cout << "|              ПОСЛЕДОВАТЕЛЬНАЯ ВЕРСИЯ                 |" << endl;
+    cout << "|------------------------------------------------------|" << endl;
+
+    auto seq_start = chrono::high_resolution_clock::now();
+    double seq_result = sum_sequential(data);
+    auto seq_end = chrono::high_resolution_clock::now();
+
+    chrono::duration<double> seq_time = seq_end - seq_start;
+
+    cout << "  Сумма:      " << seq_result << endl;
+    cout << "  Время:      " << seq_time.count() << " секунд" << endl;
+
+    // ===== ПАРАЛЛЕЛЬНАЯ ВЕРСИЯ =====
+    cout << "\n|------------------------------------------------------|" << endl;
+    cout << "|               ПАРАЛЛЕЛЬНАЯ ВЕРСИЯ                    |" << endl;
+    cout << "|------------------------------------------------------|" << endl;
+
+    auto par_start = chrono::high_resolution_clock::now();
+    double par_result = sum_parallel(data, NUM_THREADS);
+    auto par_end = chrono::high_resolution_clock::now();
+
+    chrono::duration<double> par_time = par_end - par_start;
+
+    cout << "  Сумма:      " << par_result << endl;
+    cout << "  Время:      " << par_time.count() << " секунд" << endl;
+
+    // ===== СРАВНЕНИЕ =====
+    cout << "\n|------------------------------------------------------|" << endl;
+    cout << "|                   СРАВНЕНИЕ                          |" << endl;
+    cout << "|------------------------------------------------------|" << endl;
+
+    double speedup = seq_time.count() / par_time.count();
+
+    cout << "  Ускорение:   " << speedup << "x" << endl;
+    cout << "  Эффективность: " << (speedup / NUM_THREADS) * 100 << "%" << endl;
+
+    // Проверка корректности
+    if (seq_result == par_result) {
+        cout << "\n  Результаты последовательной и параллельной версий СОВПАДАЮТ." << endl;
+    }
+    else {
+        cout << "\n  ОШИБКА: Результаты различаются!" << endl;
+    }
+
+    cout << "\n|------------------------------------------------------|" << endl;
+    cout << "|                  РАБОТА ЗАВЕРШЕНА                    |" << endl;
+    cout << "|------------------------------------------------------|" << endl;
+
+    return 0;
+}
